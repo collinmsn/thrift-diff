@@ -261,6 +261,47 @@ var serviceTests = []struct {
 	},
 }
 
+var thriftTests = []struct {
+	name                  string
+	isBackwardsCompatible bool
+	from                  *p.Thrift
+	to                    *p.Thrift
+}{
+	{
+		"identical", true,
+		&p.Thrift{
+			Services: map[string]*p.Service{},
+		},
+		&p.Thrift{
+			Services: map[string]*p.Service{},
+		},
+	},
+	{
+		"service removed", false,
+		&p.Thrift{
+			Services: map[string]*p.Service{
+				"MyService": {
+					Name: "MyService",
+					Methods: map[string]*p.Method{
+						"foo": {"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+						"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+					},
+				},
+			},
+		},
+		&p.Thrift{
+			Services: map[string]*p.Service{
+				"MyService": {
+					Name: "MyService",
+					Methods: map[string]*p.Method{
+						"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+					},
+				},
+			},
+		},
+	},
+}
+
 func TestType(t *testing.T) {
 	for _, tt := range typeTests {
 		err := compareType(tt.from, tt.to)
@@ -307,6 +348,16 @@ func TestService(t *testing.T) {
 		isBackwardsCompatible := err == nil
 		if isBackwardsCompatible != st.isBackwardsCompatible {
 			t.Errorf("error in service test '%s': %v", st.name, err)
+		}
+	}
+}
+
+func TestThrift(t *testing.T) {
+	for _, tt := range thriftTests {
+		err := compareThrift(tt.from, tt.to)
+		isBackwardsCompatible := err == nil
+		if isBackwardsCompatible != tt.isBackwardsCompatible {
+			t.Errorf("error in service test '%s': %v", tt.name, err)
 		}
 	}
 }

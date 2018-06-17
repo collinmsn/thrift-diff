@@ -115,8 +115,101 @@ func compareType(from, to parser.Type) error {
 	return nil
 }
 
+func compareThrift(from, to *parser.Thrift) error {
+	for _, fromService := range from.Services {
+		var found = false
+		for _, toService := range to.Services {
+			if fromService.Name == toService.Name {
+				if err := compareService(fromService, toService); err != nil {
+					return fmt.Errorf("service '%s' was changed: %v", fromService.Name, err)
+				}
+				found = true
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("service '%s' was removed", fromService.Name)
+		}
+	}
+
+	return nil
+}
+
 func printUsage() {
 	fmt.Printf("Usage: %s [FROM_THRIFT_FILE] [TO_THRIFT_FILE]\n", os.Args[0])
+}
+
+func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
+	var res = parser.Thrift{
+		Typedefs: map[string]*parser.Typedef{},
+		Namespaces: map[string]string{},
+		Constants: map[string]*parser.Constant{},
+		Enums: map[string]*parser.Enum{},
+		Structs: map[string]*parser.Struct{},
+		Exceptions: map[string]*parser.Struct{},
+		Unions: map[string]*parser.Struct{},
+		Services: map[string]*parser.Service{},
+	}
+
+	for _, t := range files {
+		for k, v := range t.Typedefs {
+			if _, exists := res.Typedefs[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Typedefs[k] = v
+		}
+
+		for k, v := range t.Namespaces {
+			if _, exists := res.Namespaces[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Namespaces[k] = v
+		}
+
+		for k, v := range t.Constants {
+			if _, exists := res.Constants[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Constants[k] = v
+		}
+
+		for k, v := range t.Enums {
+			if _, exists := res.Enums[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Enums[k] = v
+		}
+
+		for k, v := range t.Structs {
+			if _, exists := res.Structs[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Structs[k] = v
+		}
+
+		for k, v := range t.Exceptions {
+			if _, exists := res.Exceptions[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Exceptions[k] = v
+		}
+
+		for k, v := range t.Unions {
+			if _, exists := res.Unions[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Unions[k] = v
+		}
+
+		for k, v := range t.Services {
+			if _, exists := res.Services[k]; exists {
+				return nil, fmt.Errorf("key %s already exists", k)
+			}
+			res.Services[k] = v
+		}
+	}
+
+	return &res, nil
 }
 
 func main() {
@@ -153,21 +246,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Hard coded hack for testing
-	var fromThrift *parser.Thrift
-	for _, t := range fromThrifts {
-		fromThrift = t
-		break
+	fromThrift, err := mergeThriftFiles(fromThrifts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v\n", err)
+		os.Exit(1)
 	}
 
-	var toThrift *parser.Thrift
-	for _, t := range toThrifts {
-		toThrift = t
-		break
+	toThrift, err := mergeThriftFiles(toThrifts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v\n", err)
+		os.Exit(1)
 	}
 
-	err = compareStruct(*fromThrift.Structs["User"], *toThrift.Structs["User"])
+
+	err = compareThrift(fromThrift, toThrift)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "not backwards compatible: %s\n", err.Error())
+		os.Exit(1)
 	}
 }
