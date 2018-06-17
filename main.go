@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-func getField(id int, s parser.Struct) *parser.Field {
-	for _, f := range s.Fields {
+func getField(id int, fields []*parser.Field) *parser.Field {
+	for _, f := range fields {
 		if f.ID == id {
 			return f
 		}
@@ -16,15 +16,61 @@ func getField(id int, s parser.Struct) *parser.Field {
 	return nil
 }
 
-func compareStruct(from, to parser.Struct) error {
-	for _, fromField := range from.Fields {
+// The compare functions return an error when a change is not backwards compatible
+
+func compareFields(from, to []*parser.Field) error {
+	for _, fromField := range from {
 		toField := getField(fromField.ID, to)
 		if toField == nil {
-			return fmt.Errorf("field '%s' was removed from struct '%s'", to.Name)
+			return fmt.Errorf("field '%s' was removed", fromField.Name)
 		}
 
 		if err := compareField(*fromField, *toField); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func compareStruct(from, to parser.Struct) error {
+	return compareFields(from.Fields, to.Fields)
+}
+
+func compareMethod(from, to parser.Method) error {
+	if from.Name != to.Name {
+		return fmt.Errorf("name was changed. %s => %s", from.Name, to.Name)
+	}
+
+	if err := compareType(*from.ReturnType, *to.ReturnType); err != nil {
+		return fmt.Errorf("method '%s': %v", from.Name, err)
+	}
+
+	if err := compareFields(from.Arguments, to.Arguments); err != nil {
+		return fmt.Errorf("method '%s': %v", from.Name, err)
+	}
+
+	return nil
+}
+
+func compareService(from, to *parser.Service) error {
+	if from.Name != to.Name {
+		return fmt.Errorf("name was changed. %s => %s", from.Name, to.Name)
+	}
+
+	for _, fromMethod := range from.Methods {
+		var found = false
+		for _, toMethod := range to.Methods {
+			if fromMethod.Name == toMethod.Name {
+				if err := compareMethod(*fromMethod, *toMethod); err != nil {
+					return fmt.Errorf("method '%s' was changed: %v", fromMethod.Name, err)
+				}
+				found = true
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("method '%s' was removed", fromMethod.Name)
 		}
 	}
 
