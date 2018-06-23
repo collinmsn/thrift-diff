@@ -1,363 +1,153 @@
 package main
 
 import (
-	p "github.com/samuel/go-thrift/parser"
 	"testing"
+	"strings"
 )
 
-var noAnno = []*p.Annotation{}
-var noFields = []*p.Field{}
-var i64Type = p.Type{"i64", nil, nil, []*p.Annotation{}}
-var i32Type = p.Type{"i32", nil, nil, []*p.Annotation{}}
-var strType = p.Type{"string", nil, nil, []*p.Annotation{}}
-
-var typeTests = []struct {
+var rawStructTests = []struct {
 	name                  string
 	isBackwardsCompatible bool
-	from                  p.Type
-	to                    p.Type
+	from                  string
+	to                    string
 }{
 	{
-		"identical", true,
-		p.Type{"i64", nil, nil, noAnno},
-		p.Type{"i64", nil, nil, noAnno},
+		"field name change", true,
+		"struct Foo { 1: i32 bar }",
+		"struct Foo { 1: i32 quuz }",
 	},
 	{
-		"type name changed", false,
-		p.Type{"i64", nil, nil, noAnno},
-		p.Type{"string", nil, nil, noAnno}},
-	{
-		"identical map", true,
-		p.Type{"map", &strType, &i64Type, noAnno},
-		p.Type{"map", &strType, &i64Type, noAnno},
+		"field type change", false,
+		"struct Foo { 1: i32 bar }",
+		"struct Foo { 1: i64 bar }",
 	},
 	{
-		"map key changed", false,
-		p.Type{"map", &i32Type, &i64Type, noAnno},
-		p.Type{"map", &strType, &i64Type, noAnno},
+		"field map key type change", false,
+		"struct Foo { 1: map<string, string> bar }",
+		"struct Foo { 1: map<i64, string> bar }",
 	},
 	{
-		"map value changed", false,
-		p.Type{"map", &strType, &i32Type, noAnno},
-		p.Type{"map", &strType, &i64Type, noAnno},
-	},
-}
-
-func field(id int, name string, type_ *p.Type) *p.Field {
-	return &p.Field{id, name, false, type_, nil, noAnno}
-}
-
-var fieldTests = []struct {
-	name                  string
-	isBackwardsCompatible bool
-	from                  p.Field
-	to                    p.Field
-}{
-	{
-		"identical", true,
-		*field(1, "foo", &i64Type),
-		*field(1, "foo", &i64Type),
+		"field map value type change", false,
+		"struct Foo { 1: map<string, string> bar }",
+		"struct Foo { 1: map<string, i64> bar }",
 	},
 	{
-		"ID changed", false,
-		*field(1, "foo", &i64Type),
-		*field(2, "foo", &i64Type),
+		"field id change", false,
+		"struct Foo { 1: i32 bar }",
+		"struct Foo { 2: i32 bar }",
 	},
 	{
-		"name changed", true,
-		*field(1, "foo", &i64Type),
-		*field(1, "bar", &i64Type),
+		"struct rename", false,
+		"struct Foo { 1: i32 bar }",
+		"struct Baz { 1: i32 bar }",
 	},
 	{
-		"type changed", false,
-		*field(1, "foo", &i64Type),
-		*field(1, "foo", &strType),
+		"struct remove", false,
+		"struct Foo { 1: i32 bar }; struct Baz { 1: i32 bar }",
+		"struct Baz { 1: i32 bar }",
 	},
 	{
-		"optional to required", false,
-		p.Field{1, "foo", true, &i64Type, nil, noAnno},
-		p.Field{1, "foo", false, &i64Type, nil, noAnno},
+		"add field", true,
+		"struct Foo { 1: i32 bar }",
+		"struct Foo { 1: i32 bar, 2: i32 baz }",
 	},
 	{
-		"required to optional", true,
-		p.Field{1, "foo", false, &i64Type, nil, noAnno},
-		p.Field{1, "foo", true, &i64Type, nil, noAnno},
-	},
-}
-
-var structTests = []struct {
-	name                  string
-	isBackwardsCompatible bool
-	from                  p.Struct
-	to                    p.Struct
-}{
-	{
-		"identical", true,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-			{2, "bar", false, &i32Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-			{2, "bar", false, &i32Type, nil, noAnno},
-		}, noAnno},
+		"field in substruct changed", false,
+		"struct Foo { 1: i32 bar }; struct Baz { 1: Foo bar }",
+		"struct Foo { 1: i64 bar }; struct Baz { 1: Foo bar }",
 	},
 	{
-		"field added", true,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{6, "bar", false, &i32Type, nil, noAnno},
-			{1, "foo", false, &i64Type, nil, noAnno},
-		}, noAnno},
+		"field in substruct changed", false,
+		"struct Foo { 1: i32 bar }; struct Baz { 1: Foo bar }",
+		"struct Foo { 1: i64 bar }; struct Baz { 1: Foo bar }",
 	},
 	{
-		"field removed", false,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-			{2, "bar", false, &i32Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{2, "bar", false, &i32Type, nil, noAnno},
-		}, noAnno},
+		"field optional -> required", true,
+		"struct Foo { 1: optional i32 bar }",
+		"struct Foo { 1: required i32 bar }",
 	},
 	{
-		"field name changed", true,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{1, "bar", false, &i64Type, nil, noAnno},
-		}, noAnno},
+		"field required -> optional", false,
+		"struct Foo { 1: required i32 bar }",
+		"struct Foo { 1: optional i32 bar }",
+	},
+	// Not handled by current Thrift IDL parser
+	//{
+	//	"field required -> optional (default)", false,
+	//	"struct Foo { 1: required i32 bar }",
+	//	"struct Foo { 1: i32 bar }",
+	//},
+	{
+		"method name change", false,
+		"service Foo { void ping() }",
+		"service Foo { void hello() }",
 	},
 	{
-		"field type changed", false,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i32Type, nil, noAnno},
-		}, noAnno},
+		"method add", true,
+		"service Foo { void hello() }",
+		"service Foo { void ping(); void hello() }",
 	},
 	{
-		"field name changed", true,
-		p.Struct{"foo", []*p.Field{
-			{1, "foo", false, &i64Type, nil, noAnno},
-			{1, "foo", false, &i64Type, nil, noAnno},
-		}, noAnno},
-		p.Struct{"foo", []*p.Field{
-			{1, "bar", false, &i64Type, nil, noAnno},
-		}, noAnno},
-	},
-}
-
-var methodTests = []struct {
-	name                  string
-	isBackwardsCompatible bool
-	from                  p.Method
-	to                    p.Method
-}{
-	{
-		"identical", true,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+		"method remove", false,
+		"service Foo { void ping(); void hello() }",
+		"service Foo { void hello() }",
 	},
 	{
-		"name changed", false,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		p.Method{"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+		"method return type change", false,
+		"service Foo { void ping() }",
+		"service Foo { i32 ping() }",
 	},
 	{
-		"return type changed", false,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		p.Method{"", "foo", false, &i32Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
+		"method argument add", true,
+		"service Foo { void ping(1: i32 foo) }",
+		"service Foo { void ping(1: i32 foo, 2: i64 bar) }",
 	},
 	{
-		"argument added", true,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{
-			field(1, "foo", &strType),
-		}, noFields, noAnno},
-		p.Method{"", "foo", false, &i64Type, []*p.Field{
-			field(43, "bar", &strType),
-			field(1, "baz", &strType),
-		}, noFields, noAnno},
+		"method argument remove", false,
+		"service Foo { void ping(1: i32 foo, 2: i64 bar) }",
+		"service Foo { void ping(1: i32 foo) }",
 	},
 	{
-		"argument removed", false,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{
-			field(1, "foo", &strType),
-			field(5, "bar", &strType),
-		}, noFields, noAnno},
-		p.Method{"", "foo", false, &i64Type, []*p.Field{
-			field(5, "bar", &strType),
-			field(2, "foo", &strType),
-		}, noFields, noAnno},
+		"method argument name change", true,
+		"service Foo { void ping(1: i32 foo) }",
+		"service Foo { void ping(1: i32 bar) }",
 	},
 	{
-		"argument name changed", true,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "quuz", &strType)}, noFields, noAnno},
+		"method argument type change", false,
+		"service Foo { void ping(1: i32 foo) }",
+		"service Foo { void ping(1: i64 foo) }",
 	},
 	{
-		"argument type changed", false,
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		p.Method{"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &i64Type)}, noFields, noAnno},
-	},
-}
-
-var serviceTests = []struct {
-	name                  string
-	isBackwardsCompatible bool
-	from                  *p.Service
-	to                    *p.Service
-}{
-	{
-		"identical", true,
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
+		"service add", true,
+		"service Foo { void ping() }",
+		"service Foo { void ping() }; service Bar { void ping() }",
 	},
 	{
-		"name changed", false,
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-		&p.Service{"quuz", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
+		"service remove", false,
+		"service Foo { void ping() }; service Bar { void ping() }",
+		"service Foo { void ping() }",
 	},
 	{
-		"method name changed", false,
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-		&p.Service{"foo", "", map[string]*p.Method{
-			"quuz": {"", "quuz", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
+		"service name change", true,
+		"service Foo { void ping() }",
+		"service Bar { void ping() }",
 	},
-	{
-		"method added", true,
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-			"quuz": {"", "quuz", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-	},
-	{
-		"method removed", false,
-		&p.Service{"foo", "", map[string]*p.Method{
-			"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-			"quuz": {"", "quuz", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-		&p.Service{"foo", "", map[string]*p.Method{
-			"quuz": {"", "quuz", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-		}, noAnno},
-	},
-}
-
-var thriftTests = []struct {
-	name                  string
-	isBackwardsCompatible bool
-	from                  *p.Thrift
-	to                    *p.Thrift
-}{
-	{
-		"identical", true,
-		&p.Thrift{
-			Services: map[string]*p.Service{},
-		},
-		&p.Thrift{
-			Services: map[string]*p.Service{},
-		},
-	},
-	{
-		"service removed", false,
-		&p.Thrift{
-			Services: map[string]*p.Service{
-				"MyService": {
-					Name: "MyService",
-					Methods: map[string]*p.Method{
-						"foo": {"", "foo", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-						"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-					},
-				},
-			},
-		},
-		&p.Thrift{
-			Services: map[string]*p.Service{
-				"MyService": {
-					Name: "MyService",
-					Methods: map[string]*p.Method{
-						"bar": {"", "bar", false, &i64Type, []*p.Field{field(1, "baz", &strType)}, noFields, noAnno},
-					},
-				},
-			},
-		},
-	},
-}
-
-func TestType(t *testing.T) {
-	for _, tt := range typeTests {
-		err := compareType(tt.from, tt.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != tt.isBackwardsCompatible {
-			t.Errorf("error in type test '%s': %v", tt.name, err)
-		}
-	}
-}
-
-func TestField(t *testing.T) {
-	for _, ft := range fieldTests {
-		err := compareField(ft.from, ft.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != ft.isBackwardsCompatible {
-			t.Errorf("error in field test '%s': %v", ft.name, err)
-		}
-	}
-}
-
-func TestStruct(t *testing.T) {
-	for _, st := range structTests {
-		err := compareStruct(st.from, st.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != st.isBackwardsCompatible {
-			t.Errorf("error in struct test '%s': %v", st.name, err)
-		}
-	}
-}
-
-func TestMethod(t *testing.T) {
-	for _, mt := range methodTests {
-		err := compareMethod(mt.from, mt.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != mt.isBackwardsCompatible {
-			t.Errorf("error in method test '%s': %v", mt.name, err)
-		}
-	}
-}
-
-func TestService(t *testing.T) {
-	for _, st := range serviceTests {
-		err := compareService(st.from, st.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != st.isBackwardsCompatible {
-			t.Errorf("error in service test '%s': %v", st.name, err)
-		}
-	}
 }
 
 func TestThrift(t *testing.T) {
-	for _, tt := range thriftTests {
-		err := compareThrift(tt.from, tt.to)
-		isBackwardsCompatible := err == nil
-		if isBackwardsCompatible != tt.isBackwardsCompatible {
-			t.Errorf("error in service test '%s': %v", tt.name, err)
+	for i := 0; i < 100; i++ {
+		for _, tt := range rawStructTests {
+			fromThrift := parse(tt.from)
+			toThrift := parse(tt.to)
+
+			err := compareThrift(fromThrift, toThrift)
+			isBackwardsCompatible := err == nil
+			if isBackwardsCompatible != tt.isBackwardsCompatible {
+				t.Errorf("error in raw Thrift test '%s': %v", tt.name, err)
+				divider := strings.Repeat("-", len(tt.from) + 7)
+				t.Errorf("\nFrom: %s\n%s\n  To: %s", tt.from, divider, tt.to)
+				t.FailNow()
+			}
 		}
 	}
 }

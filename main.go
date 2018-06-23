@@ -42,7 +42,7 @@ func compareMethod(from, to parser.Method) error {
 		return fmt.Errorf("name was changed. %s => %s", from.Name, to.Name)
 	}
 
-	if err := compareType(*from.ReturnType, *to.ReturnType); err != nil {
+	if err := compareType(from.ReturnType, to.ReturnType); err != nil {
 		return fmt.Errorf("method '%s': %v", from.Name, err)
 	}
 
@@ -82,32 +82,38 @@ func compareField(from, to parser.Field) error {
 		return fmt.Errorf("field ID was changed. %d => %d", from.ID, to.ID)
 	}
 
-	if err := compareType(*from.Type, *to.Type); err != nil {
+	if err := compareType(from.Type, to.Type); err != nil {
 		return err
 	}
 
-	if from.Optional != to.Optional {
-		if from.Optional == true && to.Optional == false {
-			return fmt.Errorf("field cannot be made optional once required. %t => %t", from.Optional, to.Optional)
-		}
+	if from.Optional == false && to.Optional == true {
+		return fmt.Errorf("field cannot be made optional once required. %t => %t", from.Optional, to.Optional)
 	}
 
 	return nil
 }
 
-func compareType(from, to parser.Type) error {
+func compareType(from, to *parser.Type) error {
+	if from == nil && to == nil {
+		return nil
+	}
+
+	if from == nil || to == nil {
+		return fmt.Errorf("type was changed.")
+	}
+
 	if from.Name != to.Name {
 		return fmt.Errorf("type was changed. %s => %s", from.Name, to.Name)
 	}
 
 	if from.KeyType != nil {
-		if err := compareType(*from.KeyType, *to.KeyType); err != nil {
+		if err := compareType(from.KeyType, to.KeyType); err != nil {
 			return fmt.Errorf("type key was changed. %s => %s", from.Name, to.Name)
 		}
 	}
 
 	if from.ValueType != nil {
-		if err := compareType(*from.ValueType, *to.ValueType); err != nil {
+		if err := compareType(from.ValueType, to.ValueType); err != nil {
 			return fmt.Errorf("type value was changed. %s => %s", from.Name, to.Name)
 		}
 	}
@@ -129,6 +135,22 @@ func compareThrift(from, to *parser.Thrift) error {
 
 		if !found {
 			return fmt.Errorf("service '%s' was removed", fromService.Name)
+		}
+	}
+
+	for _, fromStruct := range from.Structs {
+		var found = false
+		for _, toStruct := range to.Structs {
+			if fromStruct.Name == toStruct.Name {
+				if err := compareStruct(*fromStruct, *toStruct); err != nil {
+					return fmt.Errorf("struct '%s' was changed: %v", fromStruct.Name, err)
+				}
+				found = true
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("struct '%s' was removed", fromStruct.Name)
 		}
 	}
 
