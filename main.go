@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/samuel/go-thrift/parser"
+	"github.com/collinmsn/go-thrift/parser"
 	"os"
+	"path"
+	"path/filepath"
 )
 
 func getField(id int, fields []*parser.Field) *parser.Field {
@@ -157,8 +159,30 @@ func compareThrift(from, to *parser.Thrift) error {
 	return nil
 }
 
+func compareThrifts(fromIn, toIn map[string]*parser.Thrift) error {
+	from, to := make(map[string]*parser.Thrift), make(map[string]*parser.Thrift)
+	for k, v := range fromIn {
+		from[filepath.Base(k)] = v
+	}
+	for k, v := range toIn {
+		to[filepath.Base(k)] = v
+	}
+
+	for k, v := range from {
+		if vto, ok := to[k]; !ok {
+			err := fmt.Errorf("to missing file: %s\n", k)
+			return err
+		} else if err := compareThrift(v, vto); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func printUsage() {
-	fmt.Printf("Usage: %s [FROM_THRIFT_FILE] [TO_THRIFT_FILE]\n", os.Args[0])
+	fmt.Printf("Usage: %s [INCLUDE_ROOT] [FROM_THRIFT_FILE] [TO_THRIFT_FILE]\n", os.Args[0])
+	fmt.Printf("Usage: check compatibilites for from -> to and then to -> from\n")
 }
 
 func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
@@ -174,6 +198,7 @@ func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
 	}
 
 	for _, t := range files {
+		fmt.Printf("file: %#v\n", t)
 		for k, v := range t.Typedefs {
 			if _, exists := res.Typedefs[k]; exists {
 				return nil, fmt.Errorf("key %s already exists", k)
@@ -183,7 +208,7 @@ func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
 
 		for k, v := range t.Namespaces {
 			if _, exists := res.Namespaces[k]; exists {
-				return nil, fmt.Errorf("key %s already exists", k)
+				return nil, fmt.Errorf("key %s already exists, namespaces: %v", k, t.Namespaces)
 			}
 			res.Namespaces[k] = v
 		}
@@ -235,14 +260,25 @@ func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintf(os.Stderr, "No Thrift files specified!")
+	var includeRoot string
+	var fromFile string
+	var toFile string
+	if len(os.Args) == 3 {
+		fromFile = os.Args[1]
+		toFile = os.Args[2]
+	} else if len(os.Args) == 4 {
+		includeRoot = os.Args[1]
+		fromFile = os.Args[2]
+		toFile = os.Args[3]
+	} else {
+		fmt.Fprintf(os.Stderr, "No Thrift files specified!\n")
 		printUsage()
 		os.Exit(1)
 	}
-
-	fromFile := os.Args[1]
-	toFile := os.Args[2]
+	if includeRoot != "" {
+		fromFile = path.Join(includeRoot, fromFile)
+		toFile = path.Join(includeRoot, toFile)
+	}
 
 	if _, err := os.Stat(fromFile); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "File %s does not exist!", fromFile)
@@ -254,7 +290,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := &parser.Parser{}
+	p := &parser.Parser{
+		IncludeRoot:includeRoot,
+	}
 
 	fromThrifts, _, err := p.ParseFile(fromFile)
 	if err != nil {
@@ -268,20 +306,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	fromThrift, err := mergeThriftFiles(fromThrifts)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v\n", err)
-		os.Exit(1)
-	}
-
-	toThrift, err := mergeThriftFiles(toThrifts)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v\n", err)
-		os.Exit(1)
-	}
-
-
-	err = compareThrift(fromThrift, toThrift)
+	//fromThrift, err := mergeThriftFiles(fromThrifts)
+	//if err != nil {
+	//	fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v, fromThrifts: %v\n", err, fromThrifts)
+	//	os.Exit(1)
+	//}
+	//
+	//toThrift, err := mergeThriftFiles(toThrifts)
+	//if err != nil {
+	//	fmt.Fprintf(os.Stderr, "failed merging loaded Thrift files: %v, toThrifts: %v\n", err, toThrifts)
+	//	os.Exit(1)
+	//}
+	//
+	//
+	//err = compareThrift(fromThrift, toThrift)
+	//if err != nil {
+	//	fmt.Fprintf(os.Stderr, "not backwards compatible: %s\n", err.Error())
+	//	os.Exit(1)
+	//}
+	err = compareThrifts(fromThrifts, toThrifts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "not backwards compatible: %s\n", err.Error())
 		os.Exit(1)
