@@ -1,11 +1,14 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/collinmsn/go-thrift/parser"
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/collinmsn/go-thrift/parser"
+	log "github.com/golang/glog"
 )
 
 func getField(id int, fields []*parser.Field) *parser.Field {
@@ -169,11 +172,11 @@ func compareThrifts(fromIn, toIn map[string]*parser.Thrift) error {
 	}
 
 	for k, v := range from {
+		log.Infof("###### begin to compare file: %s", k)
 		if vto, ok := to[k]; !ok {
-			err := fmt.Errorf("to missing file: %s\n", k)
-			return err
+			log.Errorf("to missing file: %s", k)
 		} else if err := compareThrift(v, vto); err != nil {
-			return err
+			log.Errorf("compare thrift err: %s", err)
 		}
 	}
 
@@ -187,14 +190,14 @@ func printUsage() {
 
 func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
 	var res = parser.Thrift{
-		Typedefs: map[string]*parser.Typedef{},
+		Typedefs:   map[string]*parser.Typedef{},
 		Namespaces: map[string]string{},
-		Constants: map[string]*parser.Constant{},
-		Enums: map[string]*parser.Enum{},
-		Structs: map[string]*parser.Struct{},
+		Constants:  map[string]*parser.Constant{},
+		Enums:      map[string]*parser.Enum{},
+		Structs:    map[string]*parser.Struct{},
 		Exceptions: map[string]*parser.Struct{},
-		Unions: map[string]*parser.Struct{},
-		Services: map[string]*parser.Service{},
+		Unions:     map[string]*parser.Struct{},
+		Services:   map[string]*parser.Service{},
 	}
 
 	for _, t := range files {
@@ -260,6 +263,8 @@ func mergeThriftFiles(files map[string]*parser.Thrift) (*parser.Thrift, error) {
 }
 
 func main() {
+	flag.Set("stderrthreshold", "INFO")
+	flag.Parse()
 	var includeRoot string
 	var fromFile string
 	var toFile string
@@ -291,7 +296,7 @@ func main() {
 	}
 
 	p := &parser.Parser{
-		IncludeRoot:includeRoot,
+		IncludeRoot: includeRoot,
 	}
 
 	fromThrifts, _, err := p.ParseFile(fromFile)

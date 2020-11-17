@@ -1,2 +1,6 @@
 github.com/collinmsn/go-thrift v0.0.0-20201116115947-d6ec9f832662 h1:AyDDxlf3CqTgfJNkyouR+sqPPQVv72Pfx2H/ZY3P8Ig=
 github.com/collinmsn/go-thrift v0.0.0-20201116115947-d6ec9f832662/go.mod h1:vq+Mfszs/68uImCe3v+94jH0lfjrefBPBqUTyTwj6sI=
+github.com/collinmsn/go-thrift v0.0.0-20201116130303-522c202040b4 h1:JEIXpjJjdvfPrbRL1RCQIk+4jbEbB25SUySVeJcizfU=
+github.com/collinmsn/go-thrift v0.0.0-20201116130303-522c202040b4/go.mod h1:9tq1B/rLTSGDF2/c7y4suXbBZm/vjU94328eOa8rNW4=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
+github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
